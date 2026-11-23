@@ -1,0 +1,137 @@
+#pragma kernel Clear
+#pragma kernel Surface
+#pragma kernel Fill
+#pragma kernel Atlas
+#pragma kernel Pattern
+
+struct Vertex { float3 p; float2 uv; float4 color; };
+StructuredBuffer<Vertex> _Vertices;
+StructuredBuffer<int> _Indices;
+RWStructuredBuffer<uint> _Volume;
+RWTexture2D<float4> _Atlas;
+Texture2D<float4> _BaseMap;
+SamplerState sampler_BaseMap;
+int3 _Dims;
+int3 _PointCounts;
+int2 _AtlasGrid;
+int _TriangleCount, _Pattern, _Frame;
+int2 _TileSize;
+float3 _Min, _Size;
+float4x4 _ToVolume;
+float4 _BaseColor, _MapST, _FillColor;
+float _Thickness, _Brightness;
+uint Id(int3 p) { return p.x + _Dims.x * (p.y + _Dims.y * p.z); }
+uint Pack(float3 c) { uint3 b=(uint3)round(saturate(c)*255); return 0xff000000u | b.x | (b.y<<8) | (b.z<<16); }
+float3 Unpack(uint c) { return float3(c&255,(c>>8)&255,(c>>16)&255)/255.0; }
+float3 Position(int3 p) { return _Min+(p+0.5)/_Dims*_Size; }
+float3 V(int i) { return mul(_ToVolume,float4(_Vertices[i].p,1)).xyz; }
+
+// Closest point on a triangle, with barycentrics for UV/vertex-color interpolation.
+float3 Weights(float3 p,float3 a,float3 b,float3 c)
+{
+    float3 ab=b-a,ac=c-a,ap=p-a;
+    float d1=dot(ab,ap),d2=dot(ac,ap);
+    if(d1<=0 && d2<=0) return float3(1,0,0);
+    float3 bp=p-b; float d3=dot(ab,bp),d4=dot(ac,bp);
+    if(d3>=0 && d4<=d3) return float3(0,1,0);
+    float vc=d1*d4-d3*d2;
+    if(vc<=0 && d1>=0 && d3<=0) { float v=d1/(d1-d3); return float3(1-v,v,0); }
+    float3 cp=p-c; float d5=dot(ab,cp),d6=dot(ac,cp);
+    if(d6>=0 && d5<=d6) return float3(0,0,1);
+    float vb=d5*d2-d1*d6;
+    if(vb<=0 && d2>=0 && d6<=0) { float w=d2/(d2-d6); return float3(1-w,0,w); }
+    float va=d3*d6-d5*d4;
+    if(va<=0 && d4>=d3 && d5>=d6) { float w=(d4-d3)/((d4-d3)+(d5-d6)); return float3(0,1-w,w); }
+    float inv=rcp(max(va+vb+vc,1e-20)); return float3(va,vb,vc)*inv;
+}
+
+[numthreads(256,1,1)]
+void Clear(uint3 tid:SV_DispatchThreadID)
+{
+    if(tid.x<(uint)(_Dims.x*_Dims.y*_Dims.z)) _Volume[tid.x]=0;
+}
+
+[numthreads(64,1,1)]
+void Surface(uint3 tid:SV_DispatchThreadID)
+{
+    if(tid.x>=(uint)_TriangleCount) return;
+    int3 tri=int3(_Indices[tid.x*3],_Indices[tid.x*3+1],_Indices[tid.x*3+2]);
+    float3 a=V(tri.x),b=V(tri.y),c=V(tri.z);
+    if(dot(cross(b-a,c-a),cross(b-a,c-a))<1e-16) return;
+    float3 cell=_Size/_Dims;
+    float radius=max(_Thickness*0.5,length(cell)*0.51);
+    int3 lo=max(0,(int3)floor((min(a,min(b,c))-radius-_Min)/cell));
+    int3 hi=min(_Dims-1,(int3)floor((max(a,max(b,c))+radius-_Min)/cell));
+    for(int z=lo.z;z<=hi.z;z++) for(int y=lo.y;y<=hi.y;y++) for(int x=lo.x;x<=hi.x;x++)
+    {
+        int3 p=int3(x,y,z); float3 pos=Position(p),w=Weights(pos,a,b,c);
+        if(distance(pos,a*w.x+b*w.y+c*w.z)>radius) continue;
+        float2 uv=_Vertices[tri.x].uv*w.x+_Vertices[tri.y].uv*w.y+_Vertices[tri.z].uv*w.z;
+        float4 vc=_Vertices[tri.x].color*w.x+_Vertices[tri.y].color*w.y+_Vertices[tri.z].color*w.z;
+        float3 color=(_BaseMap.SampleLevel(sampler_BaseMap,uv*_MapST.xy+_MapST.zw,0)*_BaseColor*vc).rgb;
+        uint ignored;
+        // Deterministic winner at overlapping surface voxels; no floating-point write races.
+        InterlockedMax(_Volume[Id(p)],Pack(color),ignored);
+    }
+}
+
+// Fill is run as a column parity test for each closed mesh, including all its submeshes.
+[numthreads(8,8,1)]
+void Fill(uint3 tid:SV_DispatchThreadID)
+{
+    if(tid.x>=(uint)_Dims.x || tid.y>=(uint)_Dims.y) return;
+    float3 origin=Position(int3(tid.xy,0)); origin.z=_Min.z-_Size.z-1;
+    float hits[64]; int count=0;
+    for(int t=0;t<_TriangleCount;t++)
+    {
+        float3 a=V(_Indices[t*3]),b=V(_Indices[t*3+1]),c=V(_Indices[t*3+2]);
+        float3 e1=b-a,e2=c-a,h=cross(float3(0,0,1),e2);
+        float det=dot(e1,h); if(abs(det)<1e-9) continue;
+        float inv=1/det; float3 s=origin-a;
+        float u=dot(s,h)*inv; float3 q=cross(s,e1); float v=q.z*inv;
+        if(u<-1e-6 || v<-1e-6 || u+v>1.000001) continue;
+        float depth=origin.z+dot(e2,q)*inv;
+        bool duplicate=false;
+        for(int k=0;k<count;k++) if(abs(hits[k]-depth)<1e-5) duplicate=true;
+        if(!duplicate) { if(count==64) return; hits[count++]=depth; }
+    }
+    if((count&1)!=0) return;
+    for(int z=0;z<_Dims.z;z++)
+    {
+        float pz=Position(int3(tid.xy,z)).z; int n=0;
+        for(int k=0;k<count;k++) if(hits[k]<pz) n++;
+        uint at=Id(int3(tid.xy,z));
+        if((n&1)!=0 && _Volume[at]==0) _Volume[at]=Pack(_FillColor.rgb);
+    }
+}
+
+[numthreads(8,8,1)]
+void Pattern(uint3 tid:SV_DispatchThreadID)
+{
+    if(any(tid>=uint3(_Dims))) return;
+    float3 uv=(tid+0.5)/_Dims; float3 c=0;
+    if(_Pattern==1) c=uv;
+    if(_Pattern==2 && (int)(uv.x*_PointCounts.x)==_Frame%_PointCounts.x) c=float3(1,0.15,0.02);
+    if(_Pattern==3 && (int)(uv.y*_PointCounts.y)==_Frame%_PointCounts.y) c=float3(0.02,1,0.15);
+    if(_Pattern==4 && (int)(uv.z*_PointCounts.z)==_Frame%_PointCounts.z) c=float3(0.15,0.02,1);
+    if(_Pattern==5) c=float3(1,0,0);
+    if(_Pattern==6) c=float3(0,1,0);
+    if(_Pattern==7) c=float3(0,0,1);
+    if(_Pattern==8) c=float3(0.5,0.5,0.5);
+    _Volume[Id(tid)]=Pack(c);
+}
+
+float3 ToSrgb(float3 c) { return lerp(12.92*c,1.055*pow(max(c,0),1/2.4)-0.055,step(0.0031308,c)); }
+[numthreads(8,8,1)]
+void Atlas(uint3 tid:SV_DispatchThreadID)
+{
+    int2 size=_TileSize*_AtlasGrid; if(any(tid.xy>=(uint2)size)) return;
+    int2 tile=tid.xy/_TileSize;
+    int layer=(_AtlasGrid.y-1-tile.y)*_AtlasGrid.x+tile.x;
+    if(layer>=_PointCounts.z) { _Atlas[tid.xy]=float4(0,0,0,1); return; }
+    float2 uv=((tid.xy%_TileSize)+0.5)/_TileSize;
+    float z=(layer+0.5)*_Dims.z/_PointCounts.z-0.5;
+    int3 p=int3(min((int)(uv.x*_Dims.x),_Dims.x-1),min((int)(uv.y*_Dims.y),_Dims.y-1),max(0,(int)floor(z)));
+    float3 color=lerp(Unpack(_Volume[Id(p)]),Unpack(_Volume[Id(int3(p.xy,min(p.z+1,_Dims.z-1)))]),frac(z));
+    _Atlas[tid.xy]=float4(ToSrgb(saturate(color*_Brightness)),1);
+}

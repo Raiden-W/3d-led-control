@@ -1,0 +1,1 @@
+PASS: RGB/alpha, sRGB gray, 16 depth layers, FBX animation, deterministic evaluation, closed-mesh fill, vacated-volume clearing. Surface pixels=5088; filled pixels=14208.

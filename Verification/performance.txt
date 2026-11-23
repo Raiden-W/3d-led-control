@@ -1,0 +1,6 @@
+Edit Mode 60 fps: 8.00s, atlas fps=37.24, Unity fps=110.10, target=30, CPU submission=0.125ms, allocated memory delta=-11351668 bytes. GPU=NVIDIA Quadro RTX 6000, API=Direct3D12, scale=4, fill=False, preview=True, playing=False.
+Play Mode FBX+Spout 60 fps: 10.01s, atlas fps=59.66, Unity fps=132.32, target=60, CPU submission=0.120ms, allocated memory delta=-14371681 bytes. GPU=NVIDIA Quadro RTX 6000, API=Direct3D12, scale=4, fill=False, preview=True, playing=True.
+Play Mode sustained FBX+Spout: 15.00s, atlas fps=60.12, Unity fps=141.70, target=60, CPU submission=0.116ms, allocated memory delta=10201315 bytes. GPU=NVIDIA Quadro RTX 6000, API=Direct3D12, scale=4, fill=False, preview=True, playing=True.
+Continuous Play Mode exceeded 346.8968 seconds with FBX animation/preview/Spout active; Editor console current errors checked separately.
+Qilin 15s FBX + skinning + voxels + preview + Spout: 20.00s, atlas fps=59.40, Unity fps=69.15, target=60, CPU submission=2.660ms, allocated memory delta=-7288855 bytes. GPU=NVIDIA Quadro RTX 6000, API=Direct3D12, scale=4, fill=False, preview=True, playing=True.
+Qilin native Animator + stable matrix preview + Spout: 10.01s, atlas fps=29.47, Unity fps=86.50, target=30, CPU submission=2.539ms, allocated memory delta=-7234129 bytes. GPU=NVIDIA Quadro RTX 6000, API=Direct3D12, scale=4, fill=False, preview=True, playing=True.

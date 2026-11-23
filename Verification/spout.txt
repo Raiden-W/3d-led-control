@@ -1,0 +1,2 @@
+Spout loopback 256x768: gray=188,188,188,255; coordinate atlas differing bytes=25600; max channel error=5
+Sender native transport buffer (Spout Y flip compensated): different bytes=0 max channel delta=0. Klak receiver roundtrip adds approximate gamma conversion.

@@ -1,0 +1,44 @@
+# Unity generated data and editor caches
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+[Mm]emoryCaptures/
+[Rr]ecordings/
+
+# Unity builds and profiling output
+[Bb]uild/
+[Bb]uilds/
+*.Build.cs
+sysinfo.txt
+
+# IDE and generated project files
+.vs/
+.idea/
+*.csproj
+*.sln
+*.slnx
+*.user
+*.suo
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+
+# Unity-generated verification bake outputs
+/Verification/Bake/
+/Verification/CancelTest/
+/Verification/Qilin/
+/Verification/QilinBake/
+/Verification/QilinBakeCancel/
+/Verification/QilinBakeNoPreview/
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
