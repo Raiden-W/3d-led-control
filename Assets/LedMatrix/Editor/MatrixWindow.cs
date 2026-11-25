@@ -34,7 +34,7 @@ namespace LedMatrix.Editor
         EnumField patternField;
         IntegerField scaleField;
         Slider thicknessField,brightnessField;
-        Toggle fillField,previewField;
+        Toggle fillField,previewField,glowField;
         ColorField colorField;
         [SerializeField] MatrixVolumeRenderer draftTarget;
         [SerializeField] Vector3Int draftCounts;
@@ -102,6 +102,16 @@ namespace LedMatrix.Editor
             colorField=new ColorField("Interior color"){value=target.interiorColor}; colorField.RegisterValueChangedCallback(e=>Change("填充颜色",()=>target.interiorColor=e.newValue)); scroll.Add(colorField);
             brightnessField=new Slider("Content brightness",0,1){value=target.brightness}; brightnessField.RegisterValueChangedCallback(e=>Change("内容亮度",()=>target.brightness=e.newValue)); scroll.Add(brightnessField);
             previewField=new Toggle("3D LED preview"){value=target.previewPoints}; previewField.RegisterValueChangedCallback(e=>Change("点阵预览",()=>target.previewPoints=e.newValue)); scroll.Add(previewField);
+            glowField=new Toggle("辉光预览"){value=target.glowPreview,tooltip="只控制当前 Global Volume 的 Bloom 开关；强度、阈值和散射请在 Global Volume 中调整。"};glowField.name="glow-preview";
+            glowField.RegisterValueChangedCallback(e=>
+            {
+                if(target==null || MatrixBaker.IsBaking)return;
+                Undo.RecordObject(target,"辉光预览");
+                if(!target.SetGlowPreview(e.newValue))glowField.SetValueWithoutNotify(target.glowPreview);
+                else {EditorUtility.SetDirty(target);EditorSceneManager.MarkSceneDirty(target.gameObject.scene);Render();}
+            });
+            scroll.Add(glowField);
+            if(!target.GlowAvailable)scroll.Add(new HelpBox("当前场景没有可用的 Global Volume Bloom override。",HelpBoxMessageType.Warning));
             bakeButton=new Button(()=>{string folder=EditorUtility.OpenFolderPanel("Bake PNG sequence",Application.dataPath+"/..",""); if(folder.Length>0) {try{MatrixBaker.Begin(target,folder);}catch(Exception ex){Debug.LogException(ex);}}}){text="Bake entire FBX clip to PNG sequence"};scroll.Add(bakeButton);
             scroll.Add(new Button(MatrixBaker.Cancel){text="Cancel bake",name="cancelBake"});
             status=new Label(); scroll.Add(status);
@@ -414,7 +424,7 @@ namespace LedMatrix.Editor
             }
             patternField.SetValueWithoutNotify(target.pattern);
             thicknessField.SetValueWithoutNotify(target.surfaceThickness);fillField.SetValueWithoutNotify(target.fillInterior);
-            colorField.SetValueWithoutNotify(target.interiorColor);brightnessField.SetValueWithoutNotify(target.brightness);previewField.SetValueWithoutNotify(target.previewPoints);
+            colorField.SetValueWithoutNotify(target.interiorColor);brightnessField.SetValueWithoutNotify(target.brightness);previewField.SetValueWithoutNotify(target.previewPoints);glowField.SetValueWithoutNotify(target.glowPreview);glowField.SetEnabled(!MatrixBaker.IsBaking && target.GlowAvailable);
             dimensions.text=$"{target.Counts.x} × {target.Counts.z} × {target.Counts.y}（长 × 宽 × 高）· {target.PointCount:N0} 点\n图集 {target.AtlasColumns} 列 × {target.AtlasRows} 行 · 每格 {target.TileWidth} × {target.TileHeight} 像素";
             if(sourceToggle!=null)sourceToggle.SetValueWithoutNotify(target.contentRoot!=null&&target.contentRoot.GetComponentInChildren<FbxVolumeSource>()?.showSourceMesh==true);
             targetFpsField.SetValueWithoutNotify(target.outputFps);

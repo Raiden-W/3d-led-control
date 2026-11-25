@@ -36,6 +36,10 @@ Raw atlas bytes contain sRGB encoded RGB8, with alpha=255 and empty space black.
 
 The local 3D preview samples the final atlas. Unlit LED markers use a faint visibility floor for orientation; this floor is not written to the output. Realtime UI reports measured atlas generation fps, not cumulative frame count or configured target fps. The target output rate is adjustable from 1–120 fps; this does not change the source Clip fps used for baking. Deadline scheduling avoids accumulating one Editor tick of delay on every output frame.
 
+### Unity preview glow
+
+The LED Matrix panel exposes only the **辉光预览** toggle. It enables or disables the Bloom override on the current scene's Global Volume for Unity visual preview. Configure Bloom `Intensity`, `Threshold`, `Scatter`, `Tint` and quality in the Global Volume's Volume Profile; those controls are intentionally not duplicated in the LED Matrix panel. The toggle affects the Unity Scene/Game preview, not the atlas RenderTexture or Spout output received by TouchDesigner. The current project profile contains a Bloom override; if its intensity is zero, increase it in the Global Volume Inspector to see a visible halo. The Global Volume's original active state is restored when preview glow is switched off.
+
 ## FBX inputs
 
 Select an imported FBX in the panel, then choose its AnimationClip. Read/Write is enabled on the selected ModelImporter. Position/scale the scene's `Content Placement` object to fit the matrix; the child Animator handles animation independently of placement. Root motion extraction is disabled, while authored transform curves are evaluated at the selected animation time.

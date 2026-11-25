@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
 
 namespace LedMatrix
 {
@@ -32,6 +33,12 @@ namespace LedMatrix
         public Color interiorColor = new Color(0.1f, 0.3f, 1);
         [Range(0, 1)] public float brightness = 1;
         public bool previewPoints = true;
+        [Tooltip("在 Unity 预览中启用当前 Global Volume 的 Bloom；Bloom 参数仍由 Volume Profile 控制")]
+        public bool glowPreview;
+        [SerializeField, HideInInspector] bool glowPreviewInitialized;
+        [SerializeField, HideInInspector] bool glowOriginalVolumeActive = true;
+        [SerializeField, HideInInspector] bool glowOriginalVolumeEnabled = true;
+        [SerializeField, HideInInspector] Volume glowVolume;
         [Range(0.002f, 0.025f)] public float pointRadius = 0.007f;
         public TestPattern pattern;
         public bool playing = true;
@@ -80,6 +87,7 @@ namespace LedMatrix
         bool patternTimeOverride;
         public int SurfaceKernel => surfaceKernel;
         public int FillKernel => fillKernel;
+        public bool GlowAvailable => TryFindGlowVolume(out var volume, out var bloom);
 
         // Content roots are independently owned scene objects. VolumeSource is the
         // common boundary for FBX and future non-mesh content adapters.
@@ -173,6 +181,7 @@ namespace LedMatrix
         {
             lastTick = Clock;
             nextOutput=lastTick; scheduledFps=outputFps;
+            if(glowPreviewInitialized)ApplyGlowPreview();
             if(Application.isPlaying && animationRoot!=null) {runtimeAnimator=animationRoot.GetComponent<Animator>();if(runtimeAnimator!=null)runtimeAnimatorSpeed=runtimeAnimator.speed;}
         }
         void OnDisable()
@@ -313,6 +322,7 @@ namespace LedMatrix
             properties.SetVector("_PointCounts",new Vector4(Counts.x,Counts.y,Counts.z,0));
             properties.SetVector("_Spacing",Spacing);
             properties.SetVector("_AtlasGrid",new Vector4(AtlasColumns,AtlasRows,0,0));
+            properties.SetFloat("_GlowMultiplier",glowPreview?4f:1f);
             previewRenderer.SetPropertyBlock(properties);
         }
         public void Release()
@@ -322,6 +332,70 @@ namespace LedMatrix
             if(previewMesh!=null){DestroyImmediate(previewMesh);previewMesh=null;}
             if (AtlasTexture != null) { AtlasTexture.Release(); DestroyImmediate(AtlasTexture); AtlasTexture=null; }
             if (points != null) { DestroyImmediate(points); points=null; }
+        }
+
+        bool TryFindGlowVolume(out Volume volume, out Bloom bloom)
+        {
+            volume=glowVolume;bloom=null;
+            if(volume==null || volume.gameObject.scene!=gameObject.scene)
+            {
+                volume=null;
+                var candidates=FindObjectsByType<Volume>(FindObjectsInactive.Include,FindObjectsSortMode.None);
+                foreach(var candidate in candidates)
+                {
+                    if(candidate.gameObject.scene!=gameObject.scene || !candidate.isGlobal)continue;
+                    if(candidate.name.IndexOf("Global Volume",StringComparison.OrdinalIgnoreCase)>=0){volume=candidate;break;}
+                    if(volume==null)volume=candidate;
+                }
+                glowVolume=volume;
+            }
+            if(volume==null)return false;
+            var profile=Application.isPlaying?volume.profile:volume.sharedProfile;
+            return profile!=null && profile.TryGet(out bloom);
+        }
+
+        public bool SetGlowPreview(bool enabled)
+        {
+            if(!TryFindGlowVolume(out var volume,out var bloom))return false;
+            if(!glowPreviewInitialized)
+            {
+                glowOriginalVolumeActive=volume.gameObject.activeSelf;
+                glowOriginalVolumeEnabled=volume.enabled;
+            }
+            glowPreview=enabled;glowPreviewInitialized=true;
+#if UNITY_EDITOR
+            UnityEditor.Undo.RecordObject(volume.gameObject,"LED Matrix Glow Preview");
+            if(!Application.isPlaying && volume.sharedProfile!=null)UnityEditor.Undo.RecordObject(volume.sharedProfile,"LED Matrix Glow Preview Bloom");
+#endif
+            ApplyGlowPreview(volume,bloom);
+#if UNITY_EDITOR
+            if(!Application.isPlaying)
+            {
+                UnityEditor.EditorUtility.SetDirty(volume.gameObject);
+                if(volume.sharedProfile!=null)UnityEditor.EditorUtility.SetDirty(volume.sharedProfile);
+                UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(volume.gameObject.scene);
+            }
+#endif
+            return true;
+        }
+
+        void ApplyGlowPreview()
+        {
+            if(TryFindGlowVolume(out var volume,out var bloom))ApplyGlowPreview(volume,bloom);
+        }
+
+        void ApplyGlowPreview(Volume volume,Bloom bloom)
+        {
+            bloom.active=glowPreview;
+            if(glowPreview)
+            {
+                volume.gameObject.SetActive(true);volume.enabled=true;
+            }
+            else
+            {
+                volume.enabled=glowOriginalVolumeEnabled;
+                volume.gameObject.SetActive(glowOriginalVolumeActive);
+            }
         }
     }
 }

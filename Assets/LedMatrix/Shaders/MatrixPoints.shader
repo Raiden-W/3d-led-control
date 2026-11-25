@@ -15,7 +15,7 @@ Shader "LedMatrix/Points"
             TEXTURE2D(_Atlas); SAMPLER(sampler_Atlas);
             float4x4 _MatrixToWorld;
             float4 _PointCounts, _Spacing, _AtlasGrid;
-            float _PointSize;
+            float _PointSize, _GlowMultiplier;
             struct Out { float4 pos:SV_POSITION; float2 uv:TEXCOORD0; float2 atlas:TEXCOORD1; };
             Out Vert(uint id:SV_VertexID)
             {
@@ -35,7 +35,7 @@ Shader "LedMatrix/Points"
                 clip(1-dot(i.uv,i.uv));
                 float3 c=SAMPLE_TEXTURE2D(_Atlas,sampler_Atlas,i.atlas).rgb;
                 c=lerp(c/12.92,pow((c+0.055)/1.055,2.4),step(0.04045,c));
-                return float4(max(c,0.008),1);
+                return float4(max(c,0.008)*_GlowMultiplier,1);
             }
             ENDHLSL
         }
